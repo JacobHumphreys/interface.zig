@@ -9,6 +9,11 @@ Easy solution for all your zig dynamic dispatch needs!
 - Optional function support
 - Support for manually written vtables
 
+## Install
+Run the following command to install into a zig project
+
+❯ zig fetch --save git+https://github.com/JacobHumphreys/interface.zig.git
+
 ## Example
 
 ```zig
