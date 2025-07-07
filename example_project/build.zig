@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const interface_lib_dep = b.dependency("Interface", .{});
+    const interface_lib_dep = b.dependency("interface", .{});
     const interface_lib = interface_lib_dep.module("interface");
 
     const exe = b.addExecutable(.{
