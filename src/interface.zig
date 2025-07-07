@@ -3,8 +3,6 @@ const mem = std.mem;
 const Type = std.builtin.Type;
 
 const assert = std.debug.assert;
-const expect = std.testing.expect;
-const expectEqual = std.testing.expectEqual;
 
 ///Seems to be the Type of the ptr to the concrete type
 pub const SelfType = opaque {};
