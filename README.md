@@ -1,87 +1,87 @@
 # Zig Interfaces
 Easy solution for all your zig dynamic dispatch needs!
 
+This project is a fork of interface.zig which aims to port the project to zig 0.14.1
+as a fetchable library. It changes certain behavior and naming conventions see Example 
+for details.
+
 ## Features
 - Fully decoupled interfaces and implementations
 - Control over the storage/ownership of interface objects
 - Comptime support (including comptime-only interfaces)
-- Async function partial support (blocking on [#4621](https://github.com/ziglang/zig/issues/4621))
 - Optional function support
 - Support for manually written vtables
 
 ## Install
 Run the following command to install into a zig project
 
-❯ zig fetch --save git+https://github.com/JacobHumphreys/interface.zig.git
+```bash 
+    > zig fetch --save git+https://github.com/JacobHumphreys/interface.zig.git
+```
+
+Then Add the following to build.zig
+
+```zig
+    const interface_lib_dep = b.dependency("interface", .{});
+    const interface_lib = interface_lib_dep.module("interface");
+
+    const exe = b.addExecutable(.{
+        //Find this setting
+    });
+
+    //paste this after
+    exe.root_module.addImport("interface", interface_lib);
+```
 
 ## Example
 
 ```zig
-
-const interface = @import("interface.zig");
-const Interface = interface.Interface;
+const std = @import("std");
+const interface = @import("interface");
 const SelfType = interface.SelfType;
 
-// Let us create a Reader interface.
-// We wrap it in our own struct to make function calls more natural.
-const Reader = struct {
-    pub const ReadError = error { CouldNotRead };
+const ExampleInterface = struct{
+    const Definition = interface.Define(struct {
+        print: *const fn (*SelfType) void,
+    }, interface.Storage.NonOwning);
 
-    const IFace = Interface(struct {
+    impl: Definition,
 
-        // Our interface requires a single non optional, non-const read function.
-        read: fn (*SelfType, buf: []u8) ReadError!usize,
-
-    }, interface.Storage.NonOwning); // This is a non owning interface, similar to Rust dyn traits.
-
-    iface: IFace,
-
-    // Wrap the interface's init, since the interface is non owning it requires no allocator argument.
-    pub fn init(impl_ptr: var) Reader {
-        return .{ .iface = try IFace.init(.{impl_ptr}) };
+    //Inlining is optional
+    pub inline fn Impl(impl_ptr: anytype) ExampleInterface {
+        return ExampleInterface{
+            .impl = Definition.init(impl_ptr),
+        };
     }
 
-    // Wrap the read function call
-    pub fn read(self: *Reader, buf: []u8) ReadError!usize {
-        return self.iface.call("read", .{buf});
-    }
-
-    // Define additional, non-dynamic functions!
-    pub fn readAll(self: *Self, buf: []u8) ReadError!usize {
-        var index: usize = 0;
-        while (index != buf.len) {
-            const partial_amt = try self.read(buffer[index..]);
-            if (partial_amt == 0) return index;
-            index += partial_amt;
-        }
-        return index;
+    //Inlining is optional
+    pub inline fn print(self: ExampleInterface) void {
+        self.impl.call("print", .{});
     }
 };
 
-// Let's create an example reader
-const ExampleReader = struct {
-    state: u8,
+const ExampleImpl = struct{
+    property: u32,
 
-    // Note that this reader cannot return an error, the return type
-    // of our implementation functions only needs to coerce to the
-    // interface's function return type.
-    pub fn read(self: ExampleReader, buf: []u8) usize {
-        for (buf) |*c| {
-            c.* = self.state;
-        }
-        return buf.len;
+    pub fn print(self: *ExampleImpl) void {
+        std.debug.print("prop: {}\n", .{self.property});
     }
 };
 
-test "Use our reader interface!" {
-    var example_reader = ExampleReader{ .state=42 };
+pub fn main() !void {
+    var exampleStruct = ExampleImpl{
+        .property = 1,
+    };
 
-    var reader = Reader.init(&example_reader);
+    const impl_from_struct = ExampleInterface.Impl(&ex1));
 
-    var buf: [100]u8 = undefined;
-    _ = reader.read(&buf) catch unreachable;
+    callPrintOnExample(interface_list);
 }
 
+fn callPrintOnExample(printer: ExampleInterface) void {
+    printer.print();
+}
 ```
+See example-project directory for full implementation details.
 
-See examples.zig for more examples.
+See testing.zig for more examples.
