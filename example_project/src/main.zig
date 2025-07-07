@@ -29,6 +29,6 @@ pub fn main() !void {
 
 fn printPrinters(printers: ArrayList(ExampleInterface)) void {
     for (printers.items) |printer| {
-        printer.print();
+        printer.print("Simple Interfaces!");
     }
 }
