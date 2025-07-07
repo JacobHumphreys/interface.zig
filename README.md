@@ -75,7 +75,7 @@ pub fn main() !void {
 
     const impl_from_struct = ExampleInterface.Impl(&ex1));
 
-    callPrintOnExample(interface_list);
+    callPrintOnExample(impl_from_struct);
 }
 
 fn callPrintOnExample(printer: ExampleInterface) void {
