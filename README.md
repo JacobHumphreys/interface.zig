@@ -43,7 +43,7 @@ const SelfType = interface.SelfType;
 const ExampleInterface = struct{
     const Definition = interface.Define(struct {
         print: *const fn (*SelfType, []const u8) void,
-    }, interface.Storage.NonOwning);
+    }, .non_owned);
 
     impl: Definition,
 
