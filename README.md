@@ -42,7 +42,7 @@ const SelfType = interface.SelfType;
 
 const ExampleInterface = struct{
     const Definition = interface.Define(struct {
-        print: *const fn (*SelfType) void,
+        print: *const fn (*SelfType, []const u8) void,
     }, interface.Storage.NonOwning);
 
     impl: Definition,
@@ -55,16 +55,16 @@ const ExampleInterface = struct{
     }
 
     //Inlining is optional
-    pub inline fn print(self: ExampleInterface) void {
-        self.impl.call("print", .{});
+    pub inline fn print(self: ExampleInterface, message: []const u8) void {
+        self.impl.call("print", .{message});
     }
 };
 
 const ExampleImpl = struct{
     property: u32,
 
-    pub fn print(self: *ExampleImpl) void {
-        std.debug.print("prop: {}\n", .{self.property});
+    pub fn print(self: *ExampleImpl, message: []const u8) void {
+        std.debug.print("prop: {}\nmessage: {s}\n", .{self.property, message});
     }
 };
 
@@ -79,7 +79,7 @@ pub fn main() !void {
 }
 
 fn callPrintOnExample(printer: ExampleInterface) void {
-    printer.print();
+    printer.print("Interfaces!");
 }
 ```
 See example-project directory for full implementation details.
