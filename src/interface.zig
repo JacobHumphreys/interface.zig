@@ -317,7 +317,7 @@ fn VTableReturnType(comptime VTableType: type, comptime name: []const u8) type {
 }
 
 /// Defines an interface type and data storage type. Holds a vtable and StorageType
-pub fn Define(comptime VTableType: type, comptime StorageType: type) type {
+pub fn Define(comptime VTableType: type, storage: StorageType) type {
     comptime checkVtableType(VTableType);
 
     const stack_size: usize = if (@hasDecl(VTableType, "async_call_stack_size"))
@@ -327,14 +327,14 @@ pub fn Define(comptime VTableType: type, comptime StorageType: type) type {
 
     return struct {
         vtable_ptr: *const VTableType,
-        storage: StorageType,
+        storage: storage.GetType(),
 
         const Self = @This();
         const VTable = VTableType;
-        const Storage = StorageType;
+        const Storage = storage.GetType();
 
         /// StorageType's dynamic init function
-        pub const init = StorageType.makeInit(Self).init;
+        pub const init = Storage.MakeInit(Self).init;
 
         /// Initializes Interface with *const VTable
         pub fn initWithVTable(vtable_ptr: *const VTableType, args: anytype) Self {
@@ -384,21 +384,41 @@ pub fn Define(comptime VTableType: type, comptime StorageType: type) type {
     };
 }
 
-/// Struct used to define ptr storage types. Ironically could be improved with an interface.
-///
-/// All types are expected to implement the following methods:
-///
-///     fn makeInit(comptime TInterface: type) type
-///     pub fn getSelfPtr(comptime self: *Comptime) *SelfType
-///     pub fn deinit(comptime self: Comptime) void
-pub const Storage = struct {
-    /// Stores a Implementation type and SelfType ptr
-    pub const Comptime = struct {
+/// Defines the way the interface will handle memory references
+pub const StorageType = enum {
+
+    /// Interface can only be used at compile time but can contain concrete type information
+    compiled,
+
+    /// Interface contains reference to externally defined memory
+    non_owned,
+
+    /// Allocates struct to heap via copy. Interface owns memory and must call deinit() to prevent
+    /// leaks.
+    owned,
+
+    fn GetType(comptime self: StorageType) type {
+        return switch (self) {
+            .compiled => StorageContainer.Compiled,
+            .non_owned => StorageContainer.NonOwned,
+            .owned => StorageContainer.Owned,
+        };
+    }
+};
+
+// Struct used to contain ptr storage types.
+//
+// All types are expected to implement the following methods:
+//
+//     fn MakeInit(comptime TInterface: type) type
+//     pub fn getSelfPtr(comptime self: *Comptime) *SelfType
+//     pub fn deinit(comptime self: Comptime) void
+const StorageContainer = struct {
+    pub const Compiled = struct {
         erased_ptr: *SelfType,
         ImplType: type,
 
-        /// Creates a generic init function that
-        fn makeInit(comptime TInterface: type) type {
+        fn MakeInit(comptime TInterface: type) type {
             return struct {
                 fn init(comptime obj: anytype) TInterface {
                     const ImplType = PtrChildOrSelf(@TypeOf(obj));
@@ -407,7 +427,7 @@ pub const Storage = struct {
 
                     return TInterface{
                         .vtable_ptr = &comptime makeVTable(TInterface.VTable, ImplType),
-                        .storage = Comptime{
+                        .storage = Compiled{
                             .erased_ptr = makeSelfPtr(&obj_holder),
                             .ImplType = @TypeOf(obj),
                         },
@@ -416,25 +436,24 @@ pub const Storage = struct {
             };
         }
 
-        pub fn getSelfPtr(comptime self: *const Comptime) *SelfType {
+        pub fn getSelfPtr(comptime self: *const Compiled) *SelfType {
             return self.erased_ptr;
         }
 
-        pub fn deinit(comptime self: Comptime) void {
+        pub fn deinit(comptime self: Compiled) void {
             _ = self;
         }
     };
 
-    /// Assumed to be stack allocated. Only stores a self type pointer.
-    pub const NonOwning = struct {
+    pub const NonOwned = struct {
         erased_ptr: *SelfType,
 
-        fn makeInit(comptime TInterface: type) type {
+        fn MakeInit(comptime TInterface: type) type {
             return struct {
                 fn init(ptr: anytype) TInterface {
                     return TInterface{
                         .vtable_ptr = &comptime makeVTable(TInterface.VTable, PtrChildOrSelf(@TypeOf(ptr))),
-                        .storage = NonOwning{
+                        .storage = NonOwned{
                             .erased_ptr = makeSelfPtr(ptr),
                         },
                     };
@@ -442,66 +461,66 @@ pub const Storage = struct {
             };
         }
 
-        pub fn getSelfPtr(self: NonOwning) *SelfType {
+        pub fn getSelfPtr(self: NonOwned) *SelfType {
             return self.erased_ptr;
         }
 
-        pub fn deinit(self: NonOwning) void {
+        pub fn deinit(self: NonOwned) void {
             _ = self;
         }
     };
 
-    /// Allocates a heap copy of held type
-    pub const Owning = struct {
+    /// Allocates struct to heap via copy. Interface owns memory
+    pub const Owned = struct {
         allocator: mem.Allocator,
         mem: []u8,
-        alignment_log2: u8,
+        alignment: mem.Alignment,
 
-        fn makeInit(comptime TInterface: type) type {
+        fn MakeInit(comptime TInterface: type) type {
             return struct {
                 fn init(obj: anytype, allocator: std.mem.Allocator) TInterface {
                     const AllocType = @TypeOf(obj);
 
                     const t_align = @alignOf(AllocType);
-                    const t_align_log2 = std.math.log2(t_align);
-                    
+                    //                    const t_align_log2 = std.math.log2(t_align);
+                    const t_alignment = mem.Alignment.fromByteUnits(t_align);
 
-                    const base = allocator.rawAlloc(@sizeOf(AllocType), t_align_log2, @returnAddress()) orelse return error.OutOfMemory;
+                    const base = allocator.rawAlloc(@sizeOf(AllocType), t_alignment, @returnAddress()) orelse unreachable;
 
                     const slice = base[0..@sizeOf(AllocType)];
-                    errdefer allocator.rawFree(slice, t_align_log2, @returnAddress());
+                    errdefer allocator.rawFree(slice, t_alignment, @returnAddress());
 
                     const ptr: *AllocType = @ptrCast(@alignCast(base));
                     ptr.* = obj;
 
                     return TInterface{
                         .vtable_ptr = &comptime makeVTable(TInterface.VTable, PtrChildOrSelf(AllocType)),
-                        .storage = Owning{
+                        .storage = Owned{
                             .allocator = allocator,
                             .mem = slice,
-                            .alignment_log2 = t_align_log2,
+                            .alignment = t_alignment,
                         },
                     };
                 }
             };
         }
 
-        pub fn getSelfPtr(self: Owning) *SelfType {
+        pub fn getSelfPtr(self: Owned) *SelfType {
             return makeSelfPtr(&self.mem[0]);
         }
 
-        pub fn deinit(self: Owning) void {
-            self.allocator.rawFree(self.mem, self.alignment_log2, @returnAddress());
+        pub fn deinit(self: Owned) void {
+            self.allocator.rawFree(self.mem, self.alignment, @returnAddress());
         }
     };
 
-    pub fn Inline(comptime size: usize) type {
+    pub fn Inlined(comptime size: usize) type {
         return struct {
             const Self = @This();
 
             mem: [size]u8,
 
-            fn makeInit(comptime TInterface: type) type {
+            fn MakeInit(comptime TInterface: type) type {
                 return struct {
                     fn init(value: anytype) TInterface {
                         const ImplSize = @sizeOf(@TypeOf(value));
@@ -540,8 +559,8 @@ pub const Storage = struct {
             const Self = @This();
 
             data: union(enum) {
-                Inline: Inline(size),
-                Owning: Owning,
+                Inlined: Inlined(size),
+                Owned: Owned,
             },
 
             pub fn init(args: anytype) Self {
@@ -554,13 +573,13 @@ pub const Storage = struct {
                 if (ImplSize > size) {
                     return Self{
                         .data = .{
-                            .Owning =  Owning.init(args),
+                            .Owned = Owned.init(args),
                         },
                     };
                 } else {
                     return Self{
                         .data = .{
-                            .Inline =  Inline(size).init(.{args[0]}),
+                            .Inlined = Inlined(size).init(.{args[0]}),
                         },
                     };
                 }
@@ -568,15 +587,15 @@ pub const Storage = struct {
 
             pub fn getSelfPtr(self: *Self) *SelfType {
                 return switch (self.data) {
-                    .Inline => |*i| i.getSelfPtr(),
-                    .Owning => |*o| o.getSelfPtr(),
+                    .Inlined => |*i| i.getSelfPtr(),
+                    .Owned => |*o| o.getSelfPtr(),
                 };
             }
 
             pub fn deinit(self: Self) void {
                 switch (self.data) {
-                    .Inline => |i| i.deinit(),
-                    .Owning => |o| o.deinit(),
+                    .Inlined => |i| i.deinit(),
+                    .Owned => |o| o.deinit(),
                 }
             }
         };

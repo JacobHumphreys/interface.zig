@@ -12,7 +12,7 @@ test "Simple NonOwning interface" {
         fn run() !void {
             const Fooer = Define(struct {
                 foo: *const fn (*SelfType) usize,
-            }, interface.Storage.NonOwning);
+            }, .non_owned);
 
             const TestFooer = struct {
                 const Self = @This();
@@ -27,7 +27,7 @@ test "Simple NonOwning interface" {
             };
 
             var f = TestFooer{ .state = 42 };
-            var fooer = try Fooer.init(&f);
+            var fooer = Fooer.init(&f);
             defer fooer.deinit();
 
             try expectEqual(@as(usize, 42), fooer.call("foo", .{}));
@@ -43,7 +43,7 @@ test "Comptime only interface" {
     // return error.SkipZigTest;
     const TestIFace = Define(struct {
         foo: *const fn (*SelfType, u8) u8,
-    }, interface.Storage.Comptime);
+    }, .compiled);
 
     const TestType = struct {
         const Self = @This();
@@ -56,52 +56,52 @@ test "Comptime only interface" {
     };
 
     comptime {
-        var iface = try TestIFace.init(TestType{ .state = 0 });
+        var iface = TestIFace.init(TestType{ .state = 0 });
         try expectEqual(@as(u8, 42), iface.call("foo", .{42}));
     }
 }
 
 //TODO fix owning interfaces
-//test "Owning interface with optional function and a non-method function" {
-//    const OwningOptionalFuncTest = struct {
-//        fn run() !void {
-//            const TestOwningIface = Define(struct {
-//                someFn: ?fn (*const SelfType, usize, usize) usize,
-//                otherFn: fn (*SelfType, usize) anyerror!void,
-//                thirdFn: fn (usize) usize,
-//            }, interface.Storage.Owning);
-//
-//            const TestStruct = struct {
-//                const Self = @This();
-//
-//                state: usize,
-//
-//                pub fn someFn(self: Self, a: usize, b: usize) usize {
-//                    return self.state * a + b;
-//                }
-//
-//                // Note that our return type need only coerce to the virtual function's
-//                // return type.
-//                pub fn otherFn(self: *Self, new_state: usize) void {
-//                    self.state = new_state;
-//                }
-//
-//                pub fn thirdFn(arg: usize) usize {
-//                    return arg + 1;
-//                }
-//            };
-//
-//            var iface_instance = try TestOwningIface.init(comptime TestStruct{ .state = 0 }, std.testing.allocator);
-//            defer iface_instance.deinit();
-//
-//            try iface_instance.call("otherFn", .{100});
-//            expectEqual(@as(usize, 42), iface_instance.call("someFn", .{ 0, 42 }).?);
-//            expectEqual(@as(usize, 101), iface_instance.call("thirdFn", .{100}));
-//        }
-//    };
-//
-//    try OwningOptionalFuncTest.run();
-//}
+test "Owning interface with optional function and a non-method function" {
+    const OwningOptionalFuncTest = struct {
+        fn run() !void {
+            const TestOwningIface = Define(struct {
+                someFn: ?*const fn (*const SelfType, usize, usize) usize,
+                otherFn: *const fn (*SelfType, usize) anyerror!void,
+                thirdFn: *const fn (usize) usize,
+            }, interface.StorageType.owned);
+
+            const TestStruct = struct {
+                const Self = @This();
+
+                state: usize,
+
+                pub fn someFn(self: Self, a: usize, b: usize) usize {
+                    return self.state * a + b;
+                }
+
+                // Note that our return type need only coerce to the virtual function's
+                // return type.
+                pub fn otherFn(self: *Self, new_state: usize) void {
+                    self.state = new_state;
+                }
+
+                pub fn thirdFn(arg: usize) usize {
+                    return arg + 1;
+                }
+            };
+
+            var iface_instance = TestOwningIface.init(comptime TestStruct{ .state = 0 }, std.testing.allocator);
+            defer iface_instance.deinit();
+
+            try iface_instance.call("otherFn", .{100});
+            try expectEqual(@as(usize, 42), iface_instance.call("someFn", .{ 0, 42 }).?);
+            try expectEqual(@as(usize, 101), iface_instance.call("thirdFn", .{100}));
+        }
+    };
+
+    try OwningOptionalFuncTest.run();
+}
 
 //test "Define with virtual async function implemented by an async function" {
 //    const AsyncIFace = Define(struct {
