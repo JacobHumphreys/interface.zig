@@ -337,10 +337,10 @@ pub fn Define(comptime VTableType: type, comptime StorageType: type) type {
         pub const init = StorageType.makeInit(Self).init;
 
         /// Initializes Interface with *const VTable
-        pub fn initWithVTable(vtable_ptr: *const VTableType, args: anytype) !Self {
+        pub fn initWithVTable(vtable_ptr: *const VTableType, args: anytype) Self {
             return .{
                 .vtable_ptr = vtable_ptr,
-                .storage = try init(args),
+                .storage = init(args),
             };
         }
 
@@ -400,7 +400,7 @@ pub const Storage = struct {
         /// Creates a generic init function that
         fn makeInit(comptime TInterface: type) type {
             return struct {
-                fn init(comptime obj: anytype) !TInterface {
+                fn init(comptime obj: anytype) TInterface {
                     const ImplType = PtrChildOrSelf(@TypeOf(obj));
 
                     comptime var obj_holder = obj;
@@ -431,7 +431,7 @@ pub const Storage = struct {
 
         fn makeInit(comptime TInterface: type) type {
             return struct {
-                fn init(ptr: anytype) !TInterface {
+                fn init(ptr: anytype) TInterface {
                     return TInterface{
                         .vtable_ptr = &comptime makeVTable(TInterface.VTable, PtrChildOrSelf(@TypeOf(ptr))),
                         .storage = NonOwning{
@@ -459,7 +459,7 @@ pub const Storage = struct {
 
         fn makeInit(comptime TInterface: type) type {
             return struct {
-                fn init(obj: anytype, allocator: std.mem.Allocator) error{OutOfMemory}!TInterface {
+                fn init(obj: anytype, allocator: std.mem.Allocator) TInterface {
                     const AllocType = @TypeOf(obj);
 
                     const t_align = @alignOf(AllocType);
@@ -503,7 +503,7 @@ pub const Storage = struct {
 
             fn makeInit(comptime TInterface: type) type {
                 return struct {
-                    fn init(value: anytype) !TInterface {
+                    fn init(value: anytype) TInterface {
                         const ImplSize = @sizeOf(@TypeOf(value));
 
                         if (ImplSize > size) {
@@ -544,7 +544,7 @@ pub const Storage = struct {
                 Owning: Owning,
             },
 
-            pub fn init(args: anytype) !Self {
+            pub fn init(args: anytype) Self {
                 if (args.len != 2) {
                     @compileError("InlineOrOwning storage expected a 2-tuple in initialization.");
                 }
@@ -554,13 +554,13 @@ pub const Storage = struct {
                 if (ImplSize > size) {
                     return Self{
                         .data = .{
-                            .Owning = try Owning.init(args),
+                            .Owning =  Owning.init(args),
                         },
                     };
                 } else {
                     return Self{
                         .data = .{
-                            .Inline = try Inline(size).init(.{args[0]}),
+                            .Inline =  Inline(size).init(.{args[0]}),
                         },
                     };
                 }
