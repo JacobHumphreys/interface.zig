@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const interface_lib = interface_lib_dep.module("interface");
 
     const exe = b.addExecutable(.{
-        .name = "tmp",
+        .name = "example_project",
         .root_module = exe_mod,
     });
 
