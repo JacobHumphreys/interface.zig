@@ -56,7 +56,7 @@ const ExampleInterface = struct{
 
     //Inlining is optional
     pub inline fn print(self: ExampleInterface, message: []const u8) void {
-        self.impl.call("print", .{message});
+        return self.impl.call("print", .{message});
     }
 };
 
@@ -73,7 +73,7 @@ pub fn main() !void {
         .property = 1,
     };
 
-    const impl_from_struct = ExampleInterface.Impl(&ex1));
+    const impl_from_struct: ExampleInterface = ExampleInterface.Impl(&ex1));
 
     callPrintOnExample(impl_from_struct);
 }
