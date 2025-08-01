@@ -73,7 +73,7 @@ pub fn main() !void {
         .property = 1,
     };
 
-    const impl_from_struct: ExampleInterface = ExampleInterface.Impl(&ex1));
+    const impl_from_struct: ExampleInterface = ExampleInterface.Impl(&exampleStruct));
 
     callPrintOnExample(impl_from_struct);
 }
@@ -85,3 +85,4 @@ fn callPrintOnExample(printer: ExampleInterface) void {
 See example-project directory for full implementation details.
 
 See testing.zig for more examples.
+
