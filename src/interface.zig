@@ -4,8 +4,101 @@ const Type = std.builtin.Type;
 
 const assert = std.debug.assert;
 
-///Seems to be the Type of the ptr to the concrete type
+///An opaque ptr to the concrete implementation type
 pub const SelfType = opaque {};
+
+/// Defines an interface type and data storage type. Holds a vtable and StorageType
+///
+/// ***VtableType*** must be a struct and all function members must be of type 
+///     *const fn(*SelfType, ...) ...;
+pub fn Define(comptime VTableType: type, storage: StorageType) type {
+    comptime checkVtableType(VTableType);
+
+    const stack_size: usize = if (@hasDecl(VTableType, "async_call_stack_size"))
+        VTableType.async_call_stack_size
+    else
+        1 * 1024 * 1024;
+
+    return struct {
+        vtable_ptr: *const VTableType,
+        storage: storage.GetType(),
+
+        const Self = @This();
+        const VTable = VTableType;
+        const Storage = storage.GetType();
+
+        /// StorageType's dynamic init function
+        pub const init = Storage.MakeInit(Self).init;
+
+        /// Initializes Interface with *const VTable
+        pub fn initWithVTable(vtable_ptr: *const VTableType, args: anytype) Self {
+            return .{
+                .vtable_ptr = vtable_ptr,
+                .storage = init(args),
+            };
+        }
+
+        /// Calls the given function with args and appends concrete pointer to interface if function is method
+        pub fn call(self: @This(), comptime name: []const u8, args: anytype) VTableReturnType(VTableType, name) {
+            comptime var is_optional = true;
+            comptime var is_async = true;
+            comptime var is_method = true;
+            comptime assert(vtableHasMethod(VTableType, name, &is_optional, &is_async, &is_method));
+
+            // Potentially null pointer to name field. Should never be null because of assert above
+            const fn_ptr = if (is_optional) blk: {
+                const fn_val = @field(self.vtable_ptr, name);
+                if (fn_val) |v| break :blk v;
+                return null;
+            } else @field(self.vtable_ptr, name);
+
+            if (is_method) {
+                const self_ptr = self.storage.getSelfPtr();
+                const new_args = .{self_ptr};
+
+                if (is_async) {
+                    var stack_frame: [stack_size]u8 align(std.Target.stack_align) = undefined;
+                    return await @asyncCall(&stack_frame, {}, fn_ptr, new_args ++ args);
+                }
+
+                return @call(.auto, fn_ptr, new_args ++ args);
+            }
+
+            if (is_async) {
+                var stack_frame: [stack_size]u8 align(std.Target.stack_align) = undefined;
+                return await @asyncCall(&stack_frame, {}, fn_ptr, args);
+            }
+
+            return @call(.auto, fn_ptr, args);
+        }
+
+        pub fn deinit(self: Self) void {
+            self.storage.deinit();
+        }
+    };
+}
+
+/// Defines the way the interface will handle memory references
+pub const StorageType = enum {
+    /// Interface can only be used at compile time but can contain concrete type information
+    compiled,
+
+    /// Interface contains reference to externally defined memory
+    non_owned,
+
+    /// Allocates struct to heap via copy. Interface owns memory and must call deinit() to prevent
+    /// leaks.
+    owned,
+
+    fn GetType(comptime self: StorageType) type {
+        return switch (self) {
+            .compiled => StorageContainer.Compiled,
+            .non_owned => StorageContainer.NonOwned,
+            .owned => StorageContainer.Owned,
+        };
+    }
+};
+
 
 /// Returns true if PtrType points to single item ptr
 fn isSingleItemPtr(PtrType: type) bool {
@@ -316,98 +409,6 @@ fn VTableReturnType(comptime VTableType: type, comptime name: []const u8) type {
     @compileError("VTable type '" ++ @typeName(VTableType) ++ "' has no virtual function '" ++ name ++ "'.");
 }
 
-/// Defines an interface type and data storage type. Holds a vtable and StorageType
-///
-/// ***VtableType*** must be a struct and all function members must be of type 
-///     *const fn(*SelfType, ...) ...;
-pub fn Define(comptime VTableType: type, storage: StorageType) type {
-    comptime checkVtableType(VTableType);
-
-    const stack_size: usize = if (@hasDecl(VTableType, "async_call_stack_size"))
-        VTableType.async_call_stack_size
-    else
-        1 * 1024 * 1024;
-
-    return struct {
-        vtable_ptr: *const VTableType,
-        storage: storage.GetType(),
-
-        const Self = @This();
-        const VTable = VTableType;
-        const Storage = storage.GetType();
-
-        /// StorageType's dynamic init function
-        pub const init = Storage.MakeInit(Self).init;
-
-        /// Initializes Interface with *const VTable
-        pub fn initWithVTable(vtable_ptr: *const VTableType, args: anytype) Self {
-            return .{
-                .vtable_ptr = vtable_ptr,
-                .storage = init(args),
-            };
-        }
-
-        /// Calls the given function with args and appends concrete pointer to interface if function is method
-        pub fn call(self: @This(), comptime name: []const u8, args: anytype) VTableReturnType(VTableType, name) {
-            comptime var is_optional = true;
-            comptime var is_async = true;
-            comptime var is_method = true;
-            comptime assert(vtableHasMethod(VTableType, name, &is_optional, &is_async, &is_method));
-
-            // Potentially null pointer to name field. Should never be null because of assert above
-            const fn_ptr = if (is_optional) blk: {
-                const fn_val = @field(self.vtable_ptr, name);
-                if (fn_val) |v| break :blk v;
-                return null;
-            } else @field(self.vtable_ptr, name);
-
-            if (is_method) {
-                const self_ptr = self.storage.getSelfPtr();
-                const new_args = .{self_ptr};
-
-                if (is_async) {
-                    var stack_frame: [stack_size]u8 align(std.Target.stack_align) = undefined;
-                    return await @asyncCall(&stack_frame, {}, fn_ptr, new_args ++ args);
-                }
-
-                return @call(.auto, fn_ptr, new_args ++ args);
-            }
-
-            if (is_async) {
-                var stack_frame: [stack_size]u8 align(std.Target.stack_align) = undefined;
-                return await @asyncCall(&stack_frame, {}, fn_ptr, args);
-            }
-
-            return @call(.auto, fn_ptr, args);
-        }
-
-        pub fn deinit(self: Self) void {
-            self.storage.deinit();
-        }
-    };
-}
-
-/// Defines the way the interface will handle memory references
-pub const StorageType = enum {
-    /// Interface can only be used at compile time but can contain concrete type information
-    compiled,
-
-    /// Interface contains reference to externally defined memory
-    non_owned,
-
-    /// Allocates struct to heap via copy. Interface owns memory and must call deinit() to prevent
-    /// leaks.
-    owned,
-
-    fn GetType(comptime self: StorageType) type {
-        return switch (self) {
-            .compiled => StorageContainer.Compiled,
-            .non_owned => StorageContainer.NonOwned,
-            .owned => StorageContainer.Owned,
-        };
-    }
-};
-
 // Struct used to contain ptr storage types.
 //
 // All types are expected to implement the following methods:
@@ -416,6 +417,7 @@ pub const StorageType = enum {
 //     pub fn getSelfPtr(comptime self: *Comptime) *SelfType
 //     pub fn deinit(comptime self: Comptime) void
 const StorageContainer = struct {
+    /// A comptime only interface
     pub const Compiled = struct {
         erased_ptr: *SelfType,
         ImplType: type,
@@ -447,6 +449,7 @@ const StorageContainer = struct {
         }
     };
 
+    /// Contains a reference to an externally owned implementation
     pub const NonOwned = struct {
         erased_ptr: *SelfType,
 
@@ -516,6 +519,7 @@ const StorageContainer = struct {
         }
     };
 
+    /// Not avaliable in the current version
     pub fn Inlined(comptime size: usize) type {
         return struct {
             const Self = @This();
@@ -556,6 +560,7 @@ const StorageContainer = struct {
         };
     }
 
+    /// Not avaliable in the current version
     pub fn InlineOrOwning(comptime size: usize) type {
         return struct {
             const Self = @This();
