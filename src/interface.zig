@@ -30,7 +30,7 @@ fn isContainer(T: type) bool {
 
 /// Casts provided pointer to a pointer to opaque SelfType
 ///
-/// [ptr] must be a single item pointer
+/// ***ptr*** must be a single item pointer
 fn makeSelfPtr(ptr: anytype) *SelfType {
     if (comptime !isSingleItemPtr(@TypeOf(ptr))) {
         @compileError("SelfType pointer initialization expects single item pointer parameter.");
@@ -96,7 +96,8 @@ fn makeCall(
     const self = if (is_const) constSelfPtrAs(self_ptr, ImplType) else selfPtrAs(self_ptr, ImplType);
     const fptr = @field(ImplType, name);
 
-    const first_arg_ptr = comptime @typeInfo((@typeInfo(@TypeOf(fptr)).@"fn".params[0].type.?)) == .pointer;
+    const first_arg_ptr =
+        comptime @typeInfo((@typeInfo(@TypeOf(fptr)).@"fn".params[0].type.?)) == .pointer;
 
     const self_arg = if (first_arg_ptr) .{self} else .{self.*};
 
@@ -107,9 +108,9 @@ fn makeCall(
     };
 }
 
-///param - name: name of function
-///param - FnType: type of function extracted from fn pointer
-///param - ImplType: Type of concrete interface implementation
+///***name***: name of function
+///***FnType***: type of function extracted from fn pointer
+///***ImplType***: Type of concrete interface implementation
 fn getFunctionFromImpl(comptime name: []const u8, comptime FnType: type, comptime ImplType: type) ?FnType {
     const our_cc = @typeInfo(FnType).@"fn".calling_convention;
 
@@ -228,9 +229,9 @@ fn makeVTable(comptime VTableType: type, comptime ImplType: type) VTableType {
     return vtable;
 }
 
-/// Asserts that [VTableType] is struct and that it defines no methods.
+/// Asserts that ***VTableType*** is struct and that it defines no methods.
 ///
-/// Asserts that all fields of [VTableType] are non-generic functions with
+/// Asserts that all fields of ***VTableType*** are non-generic functions with
 /// either an .auto or .async calling convention
 fn checkVtableType(comptime VTableType: type) void {
     //Asserts VTableType is struct
@@ -272,7 +273,8 @@ fn checkVtableType(comptime VTableType: type) void {
     }
 }
 
-/// Checks for the [name] of the method on the vtable then sets is_async and is_method based on functions properties
+/// Checks for the ***name*** of the method on the vtable then sets is_async and 
+/// is_method based on functions properties
 fn vtableHasMethod(comptime VTableType: type, comptime name: []const u8, is_optional: *bool, is_async: *bool, is_method: *bool) bool {
     for (std.meta.fields(VTableType)) |field| {
         if (std.mem.eql(u8, name, field.name)) {
@@ -315,6 +317,9 @@ fn VTableReturnType(comptime VTableType: type, comptime name: []const u8) type {
 }
 
 /// Defines an interface type and data storage type. Holds a vtable and StorageType
+///
+/// ***VtableType*** must be a struct and all function members must be of type 
+///     *const fn(*SelfType, ...) ...;
 pub fn Define(comptime VTableType: type, storage: StorageType) type {
     comptime checkVtableType(VTableType);
 
@@ -384,7 +389,6 @@ pub fn Define(comptime VTableType: type, storage: StorageType) type {
 
 /// Defines the way the interface will handle memory references
 pub const StorageType = enum {
-
     /// Interface can only be used at compile time but can contain concrete type information
     compiled,
 
