@@ -26,8 +26,8 @@
     // modify the field.
     .dependencies = .{
         .interface = .{
-            .url = "git+https://github.com/JacobHumphreys/interface.zig.git#52b5cfa7ea0a60dda6271a964512b57579f9d053",
-            .hash = "interface-0.0.0-s7uzgrFrAACgdPs2cHVg11p-Vis6ek17sCO2fyo7NxEZ",
+            .url = "git+https://github.com/JacobHumphreys/interface.zig.git#a6324af787fdf9aa21d30008fca475002b0297c3",
+            .hash = "interface-0.0.0-s7uzgv9sAAAiw8N_WCq_ed4JlxTqSEwzKDNr3WjaPmd8",
         },
     },
     .fingerprint = 0x2cef7d48b121c808, // Changing this has security and trust implications.

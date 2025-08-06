@@ -3,9 +3,12 @@ const SelfType = interface.SelfType;
 
 const ExampleInterface = @This();
 
-const Definition = interface.Define(struct {
-    print: *const fn (*SelfType, []const u8) void,
-}, .non_owned);
+const Definition = interface.Define(
+    struct {
+        print: *const fn (*SelfType, []const u8) void,
+    },
+    .non_owned,
+);
 
 impl: Definition,
 
